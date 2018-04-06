@@ -1,0 +1,471 @@
+{
+	"$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json",
+	"contentVersion": "1.0.0.0",
+	"parameters": {
+		"adminUsername": {
+			"type": "string",
+			"metadata": {
+				"description": "Admin username"
+			}
+		},
+		"adminPassword": {
+			"type": "securestring",
+			"metadata": {
+				"description": "Admin password"
+			}
+		},
+		"storageAccountName": {
+			"type": "string",
+			"metadata": {
+				"description": "Storage Account Name"
+			}
+		},
+		"storageAccountType": {
+			"type": "string",
+			"defaultValue": "Standard_LRS",
+			"metadata": {
+				"description": "Type of the Storage Account"
+			}
+		},
+		"vmName": {
+			"type": "string",
+			"metadata": {
+				"description": "Name of the VM"
+			}
+		},
+		"vmSize": {
+			"type": "string",
+			"defaultValue": "Standard_A2",
+			"metadata": {
+				"description": "Size of the VM"
+			}
+		},
+	     "webVmCount":{
+         "type":"int",
+         "defaultValue":1,
+         "metadata":{
+            "description":"Number of backend Web servers to be deployed"
+         }
+      },
+		"vmImageVersion": {
+			"type": "string",
+			"defaultValue": "latest",
+			"metadata": {
+				"description": "VM image version"
+			}
+		},
+		"modulesUrl": {
+			"type": "string",
+			"metadata": {
+				"description": "URL for the Desired State Configuration module"
+			}
+		},
+		"configurationFunction": {
+			"type": "string",
+			"defaultValue": "NGINXInstall.ps1\\NGINXEnvironment",
+			"metadata": {
+				"description": "DSC configuration function to call"
+			}
+		}
+	},
+	"variables": {
+		"virtualNetworkName": "[concat(parameters('storageAccountName'),'Vnet')]",
+		"vnetID": "[resourceId('Microsoft.Network/virtualNetworks', variables('virtualNetworkName'))]",
+		"vnetAddressPrefix": "10.0.0.0/16",
+		"dnsName": "[concat('lbpip',uniqueString(resourceGroup().id))]",
+		"subnet1Name": "SmartSubnet-1",
+		"subnet1Prefix": "10.0.0.0/24",
+		"subnet1Ref": "[concat(variables('vnetID'),'/subnets/', variables('subnet1Name'))]",
+		"publicIPAddressType": "Dynamic",
+		"vmpublicIPAddressName": "SmartPubIP",
+		"nicName": "SmartNIC",
+		"imagePublisher": "Canonical",
+		"imageOffer": "UbuntuServer",
+		"ubuntuOSVersion": "17.10",
+		"vmExtensionName": "dscExtension",
+		"lbIPAddressName": "lb-pubip",
+		"lbDnsLabel": "[concat('lbpubip',uniqueString(resourceGroup().id))]",
+		"loadBalancerName": "Smart-loadbalancer",
+		"loadBalancerID": "[resourceId('Microsoft.Network/loadBalancers',variables('loadBalancerName'))]",
+		"loadBalancerIPID": "[resourceId('Microsoft.Network/publicIPAddresses',variables('lbIPAddressName'))]",
+		"frontEndIPConfigID": "[concat(resourceId('Microsoft.Network/loadBalancers',variables('loadBalancerName')),'/frontendIPConfigurations/loadBalancerFrontEnd')]",
+		"AvailailbilitySetName": "AvailailbilitySet"
+	},
+	"resources": [{
+			"type": "Microsoft.Storage/storageAccounts",
+			"name": "[parameters('StorageAccountName')]",
+			"apiVersion": "2016-01-01",
+			"location": "[resourceGroup().location]",
+			"properties": {
+				"accountType": "[parameters('storageAccountType')]",
+				"tags": {
+					"resourceType": "IIS Env",
+					"displayName": "smart Storage Account"
+				},
+				"sku": {
+					"name": "[variables('storageAccountType')]"
+				},
+				"kind": "Storage",
+				"properties": {
+
+				}
+			}
+		},
+
+		{
+			"apiVersion": "2015-06-15",
+			"type": "Microsoft.Network/publicIPAddresses",
+			"name": "[variables('vmpublicIPAddressName')]",
+			"location": "[resourceGroup().location]",
+			"properties": {
+				"dnsSettings": {
+					"domainNameLabel": "[variables('dnsName')]"
+				},
+				"publicIPAllocationMethod": "[variables('publicIPAddressType')]"
+			}
+		},
+		{
+			"apiVersion": "2015-06-15",
+			"type": "Microsoft.Network/virtualNetworks",
+			"name": "[variables('virtualNetworkName')]",
+			"location": "[variables(resourceGroup().'location')]",
+			"properties": {
+				"addressSpace": {
+					"addressPrefixes": [
+						"[variables('vnetAddressPrefix')]"
+					]
+				},
+
+				"subnets": [{
+					"name": "[variables('subnet1Name')]",
+					"properties": {
+						"addressPrefix": "[variables('subnet1Prefix')]"
+					}
+				}]
+			}
+		},
+		{
+			"apiVersion": "2015-06-15",
+			"type": "Microsoft.Network/networkInterfaces",
+			"name": "[variables('nicName')]",
+			"location": "[resourceGroup().location]",
+			"dependsOn": [
+				"[concat('Microsoft.Network/publicIPAddresses/', variables('publicIPAddressName'))]",
+				"[concat('Microsoft.Network/virtualNetworks/', variables('virtualNetworkName'))]"
+			],
+			"properties": {
+				"ipConfigurations": [{
+					"name": "ipconfig1",
+					"properties": {
+						"privateIPAllocationMethod": "Dynamic",
+						"publicIPAddress": {
+							"id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('vmpublicIPAddressName'))]"
+						},
+						"subnet": {
+							"id": "[variables('subnet1Ref')]"
+						}
+					}
+				}]
+			}
+		},
+		{
+			"apiVersion": "2017-03-30",
+			"type": "Microsoft.Compute/virtualMachines",
+			"name": "[parameters('vmName')]",
+			"location": "[resourceGroup().location]",
+			"dependsOn": [
+				"[concat('Microsoft.Storage/storageAccounts/', parameters('StorageAccountName'))]",
+				"[concat('Microsoft.Network/networkInterfaces/', variables('nicName'))]"
+			],
+			"properties": {
+				"hardwareProfile": {
+					"vmSize": "[parameters('vmSize')]"
+				},
+				"osProfile": {
+					"computerName": "[parameters('vmName')]",
+					"adminUsername": "[parameters('adminUsername')]",
+					"adminPassword": "[parameters('adminPassword')]"
+				},
+				"storageProfile": {
+					"imageReference": {
+						"publisher": "[variables('imagePublisher')]",
+						"offer": "[variables('imageOffer')]",
+						"sku": "[parameters('imageSKU')]",
+						"version": "latest"
+					},
+					"osDisk": {
+						"name": "osdisk",
+						"vhd": {
+                        "uri": "[concat(reference(resourceId('Microsoft.Storage/storageAccounts', variables('infraStorageAccountName')), '2017-06-01').primaryEndpoints.blob, variables('vmStorageAccountContainerName'), '/', variables('OSDiskName'), '.vhd')]"
+						},
+						"caching": "ReadWrite",
+						"createOption": "FromImage"
+					}
+				},
+				"networkProfile": {
+					"networkInterfaces": [{
+						"id": "[resourceId('Microsoft.Network/networkInterfaces', variables('nicName'))]"
+					}]
+				}
+			}
+		},
+		{
+			"type": "Microsoft.Compute/virtualMachines/extensions",
+			"name": "[concat(parameters('vmName'),'/', variables('vmExtensionName'))]",
+			"apiVersion": "2015-05-01-preview",
+			"location": "[resourceGroup().location]",
+			"dependsOn": [
+				"[concat('Microsoft.Compute/virtualMachines/', parameters('vmName'))]"
+			],
+			"properties": {
+				"publisher": "Microsoft.Powershell",
+				"type": "DSC",
+				"typeHandlerVersion": "2.19",
+				"autoUpgradeMinorVersion": true,
+				"settings": {
+					"ModulesUrl": "[parameters('modulesUrl')]",
+					"ConfigurationFunction": "[parameters('configurationFunction')]",
+					"Properties": {
+						"MachineName": "[parameters('vmName')]"
+					}
+				},
+				"protectedSettings": null
+			}
+		},
+		{
+			"apiVersion": "2015-06-15",
+			"name": "[variables('loadBalancerName')]",
+			"type": "Microsoft.Network/loadBalancers",
+			"location": "[resourceGroup().location]",
+			"comments": "This Load Balancer is used to allow RDP access to Web VMs",
+			"tags": {
+				"displayName": "Web RDP Load Balancer"
+			},
+			"dependsOn": [
+				"[concat('Microsoft.Network/publicIPAddresses/',variables('lbIPAddressName'))]"
+			],
+			"properties": {
+				"frontendIPConfigurations": [{
+					"name": "loadBalancerFrontEnd",
+					"properties": {
+						"publicIPAddress": {
+							"id": "[variables('loadBalancerIPID')]"
+						}
+					}
+				}],
+				"backendAddressPools": [{
+					"name": "loadBalancerBackEnd"
+				}],
+				"loadBalancingRules": [{
+						"name": "weblb",
+						"properties": {
+							"backendAddressPool": {
+								"id": "[variables('lbBEAddressPoolID')]"
+							},
+							"backendPort": 80,
+							"enableFloatingIP": false,
+							"frontendIPConfiguration": {
+								"id": "[variables('lbFEIPConfigID')]"
+							},
+							"frontendPort": 80,
+							"probe": {
+								"id": "[variables('lbWebHttpsProbeID')]"
+							},
+							"protocol": "Tcp",
+							"loadDistribution": "SourceIP"
+						}
+					},
+					{
+						"name": "webhttpslb",
+						"properties": {
+							"backendAddressPool": {
+								"id": "[variables('lbBEAddressPoolID')]"
+							},
+							"backendPort": 443,
+							"enableFloatingIP": false,
+							"frontendIPConfiguration": {
+								"id": "[variables('lbFEIPConfigID')]"
+							},
+							"frontendPort": 443,
+							"probe": {
+								"id": "[variables('lbWebHttpsProbeID')]"
+							},
+							"protocol": "Tcp",
+							"loadDistribution": "SourceIP"
+						}
+					}
+				],
+				"probes": [{
+						"name": "[variables('lbWebProbeName')]",
+						"properties": {
+							"protocol": "Http",
+							"port": 80,
+							"intervalInSeconds": 15,
+							"numberOfProbes": 5
+						}
+					},
+					{
+						"name": "[variables('lbWebHttpsProbeName')]",
+						"properties": {
+							"protocol": "Tcp",
+							"port": 443,
+							"intervalInSeconds": 15,
+							"numberOfProbes": 5
+						}
+					}
+				],
+				"inboundNatPools": [{
+					"name": "[variables('natPoolNameFrontEnd')]",
+					"properties": {
+						"frontendIPConfiguration": {
+							"id": "[variables('frontEndIPConfigIDWeb')]"
+						},
+						"protocol": "tcp",
+						"frontendPortRangeStart": "[variables('natStartPortFrontEnd')]",
+						"frontendPortRangeEnd": "[variables('natEndPortFrontEnd')]",
+						"backendPort": "[variables('natBackendPortFrontEnd')]"
+					}
+				}]
+			}
+		},
+		{
+			"type": "Microsoft.Network/loadBalancers",
+			"name": "[variables('loadBalancerName')]",
+			"apiVersion": "2015-06-15",
+			"location": "[resourceGroup().location]",
+			"comments": "This Load Balancer is used to allow RDP access to Web VMs",
+			"tags": {
+				"displayName": "Web RDP Load Balancer"
+			},
+			"dependsOn": [
+				"[concat('Microsoft.Network/publicIPAddresses/', variables('lbIPAddressName'))]"
+			],
+			"properties": {
+				"frontendIPConfigurations": [{
+					"name": "loadBalancerFrontEnd",
+					"properties": {
+						"publicIPAddress": {
+							"id": "[variables('loadBalancerIPID')]"
+						}
+					}
+				}],
+				"backendAddressPools": [{
+					"name": "loadBalancerBackEnd"
+				}]
+			}
+		},
+		{
+			"type": "Microsoft.Network/loadBalancers/inboundNatRules",
+			"name": "[concat(variables('loadBalancerName'), '/', 'RDPVM', copyIndex(1))]",
+			"apiVersion": "2016-03-30",
+			"location": "[resourceGroup().location]",
+			"comments": "This resource adds all the NAT rules needed to allow RDP access to Web Servers VMs",
+			"tags": {
+				"displayName": "LB RDP NAT rules"
+			},
+			"dependsOn": [
+				"[concat('Microsoft.Network/loadBalancers/', variables('loadBalancerName'))]"
+			],
+			"copy": {
+				"name": "lbNatLoop",
+				"count": "[parameters('webvmCount')]"
+			},
+			"properties": {
+				"frontendIPConfiguration": {
+					"id": "[variables('frontEndIPConfigID')]"
+				},
+				"protocol": "Tcp",
+				"frontendPort": "[copyIndex(5001)]",
+				"backendPort": 3389,
+				"enableFloatingIP": false
+			}
+		},
+
+		{
+			"name": "[concat(variables('webVmNicName'), copyindex(1))]",
+			"type": "Microsoft.Network/networkInterfaces",
+			"apiVersion": "2016-03-30",
+			"location": "[resourceGroup().location]",
+			"comments": "NICs for Web Servers",
+			"tags": {
+				"displayName": "Web VM NICs"
+			},
+			"dependsOn": [
+				"[concat('Microsoft.Network/virtualNetworks/', variables('virtualNetworkName'))]",
+				"[concat('Microsoft.Network/loadBalancers/',variables('loadBalancerName'),'/inboundNatRules/', 'RDPVM', copyIndex(1))]"
+			],
+			"copy": {
+				"name": "WebnicLoop",
+				"count": "[parameters('webVmCount')]"
+			},
+			"properties": {
+				"ipConfigurations": [{
+					"name": "ipconfig1",
+					"properties": {
+						"privateIPAllocationMethod": "Dynamic",
+						"subnet": {
+							"id": "[concat(resourceId('Microsoft.Network/virtualNetworks', variables('virtualNetworkName')), '/subnets/', variables('webSubnetName'))]"
+						},
+						"loadBalancerBackendAddressPools": [{
+							"id": "[concat(variables('loadBalancerID'), '/backendAddressPools/LoadBalancerBackend')]"
+						}],
+						"loadBalancerInboundNatRules": [{
+							"id": "[concat(variables('loadBalancerID'),'/inboundNatRules/RDPVM',copyIndex(1))]"
+						}]
+					}
+				}]
+			}
+		},
+		{
+			"apiVersion": "2015-06-15",
+			"type": "Microsoft.Network/networkSecurityGroups",
+			"name": "appNetworkSecurityGroup",
+			"location": "[resourceGroup().location]",
+			"properties": {
+				"securityRules": [{
+						"name": "webrule",
+						"properties": {
+							"description": "This rule allows traffic in on port 80",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "80",
+							"sourceAddressPrefix": "INTERNET",
+							"destinationAddressPrefix": "[variables('subnet1Prefix')]",
+							"access": "Allow",
+							"priority": 100,
+							"direction": "Inbound"
+						}
+					},
+					{
+						"name": "webHttpsRule",
+						"properties": {
+							"description": "This rule allows traffic in on port 443",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "443",
+							"sourceAddressPrefix": "INTERNET",
+							"destinationAddressPrefix": "[variables('subnet1Prefix')]",
+							"access": "Allow",
+							"priority": 110,
+							"direction": "Inbound"
+						}
+					},
+					{
+						"name": "rdprule",
+						"properties": {
+							"description": "This rule allows traffic on port 3389 from the web",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "3389",
+							"sourceAddressPrefix": "INTERNET",
+							"destinationAddressPrefix": "[variables('subnet1Prefix')]",
+							"access": "Allow",
+							"priority": 200,
+							"direction": "Inbound"
+						}
+					}
+				]
+			}
+		}
+	]
+}

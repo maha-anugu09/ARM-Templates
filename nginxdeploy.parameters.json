@@ -1,0 +1,28 @@
+{
+  "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+  "adminUsername": {
+      "type": "string",
+	  "value": "Smartuser"
+    },
+      "adminPassword": {
+      "value": "Smart@123"
+    },
+	 "StorageAccountName": {
+     "value": "Voyage"
+    },
+     "vmName": {
+     "value": "Unique-vm1"
+    },
+     "vmSize": {
+     "value": "Standard_A2"
+    },
+     "modulesUrl": {
+     "value": "C:\Users\Mahalaxmi.Anugu\Documents\Learn\NGINXInstall.zip"
+    },
+     "configurationFunction": {
+     "value": "NGINXInstall.ps1\\NGINXEnvironment"
+    }
+   }
+}

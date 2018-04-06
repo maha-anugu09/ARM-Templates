@@ -1,0 +1,31 @@
+{
+  "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+  "adminUsername": {
+      "type": "string",
+	  "value": "DevUser"
+    },
+      "adminPassword": {
+      "value": "Devgep@123"
+    },
+	 "StorageAccountName": {
+     "value": "Voyage"
+    },
+     "vmName": {
+     "value": "Unique-vm1"
+    },
+     "vmSize": {
+     "value": "Standard_A2"
+    },
+     "imageSKU": {
+     "value": "2012-R2-Datacenter"
+    },
+     "modulesUrl": {
+     "value": "C:\Users\Mahalaxmi.Anugu\Documents\Learn\IISInstall.zip"
+    },
+     "configurationFunction": {
+     "value": "IISInstall.ps1\\IISEnvironment"
+    }
+   }
+}
